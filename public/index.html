@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TB. Material Maju Jaya</title>
+    
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🏗️</text></svg>">
+
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#0d6efd">
+    <link rel="apple-touch-icon" href="/icon-192.png">
+
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .product-card img { height: 200px; object-fit: cover; }
+        .qty-control { min-width: 30px; text-align: center; font-weight: bold; }
+    </style>
+</head>
+<body class="bg-light">
+
+<nav class="navbar navbar-dark bg-primary mb-4 sticky-top shadow-sm">
+    <div class="container">
+        <a href="/" class="navbar-brand mb-0 h1 text-decoration-none">
+            🏗️ TB. Material Maju Jaya
+        </a>
+        
+        <div class="d-flex gap-2 align-items-center">
+            
+            <a href="/admin" class="btn btn-outline-light btn-sm d-flex align-items-center" title="Login Admin">
+                🔐 <span class="d-none d-md-inline ms-1 fw-bold">Login</span>
+            </a>
+
+            <button class="btn btn-warning position-relative fw-bold" data-bs-toggle="modal" data-bs-target="#cartModal">
+                🛒 <span class="d-none d-sm-inline">Keranjang</span>
+                <span id="cartCount" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
+                    0
+                </span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<div class="container pb-5">
+    <div id="productList" class="row g-4">
+        <div class="col-12 text-center mt-5">
+            <div class="spinner-border text-primary" role="status"></div>
+            <p>Memuat produk...</p>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="cartModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title text-dark">🛒 Keranjang Belanja</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                
+                <div class="table-responsive mb-3">
+                    <table class="table align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Produk</th>
+                                <th class="text-center">Jumlah</th>
+                                <th class="text-end">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cartItems">
+                            </tbody>
+                    </table>
+                </div>
+
+                <h4 class="text-end fw-bold mb-4">Total: Rp <span id="cartTotal">0</span></h4>
+                
+                <hr>
+                
+                <h5 class="mb-3">📄 Data Pemesan (Bayar di Tempat / COD)</h5>
+                <form id="checkoutForm">
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Nama Lengkap</label>
+                        <input type="text" class="form-control" id="customerName" placeholder="Contoh: Budi Santoso" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Nomor WhatsApp</label>
+                        <input type="number" class="form-control" id="whatsapp" placeholder="08xxxxxxxxxx" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small text-muted">Alamat Pengiriman</label>
+                        <textarea class="form-control" id="address" rows="2" placeholder="Jalan, RT/RW, Kelurahan..." required></textarea>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100 py-2 fw-bold">
+                        🚀 Pesan Sekarang via WhatsApp
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // --- STATE ---
+    let cart = [];
+    let products = [];
+
+    // --- FUNGSI UTAMA ---
+
+    // 1. Load Produk dari Server
+    async function loadProducts() {
+        try {
+            const res = await fetch('/api/products');
+            products = await res.json();
+            
+            const container = document.getElementById('productList');
+            if (products.length === 0) {
+                container.innerHTML = '<div class="col-12 text-center py-5"><h5>Belum ada produk tersedia.</h5></div>';
+                return;
+            }
+
+            container.innerHTML = products.map(p => `
+                <div class="col-md-3 col-6">
+                    <div class="card product-card h-100 shadow-sm border-0">
+                        <img src="${p.image || 'https://via.placeholder.com/200?text=No+Image'}" class="card-img-top" alt="${p.name}">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title text-truncate">${p.name}</h5>
+                            <p class="card-text text-muted small flex-grow-1">${p.description || '-'}</p>
+                            <h6 class="text-primary fw-bold mb-3">Rp ${p.price.toLocaleString('id-ID')}</h6>
+                            <button onclick="addToCart('${p._id}')" class="btn btn-outline-primary w-100 mt-auto fw-bold">
+                                + Keranjang
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        } catch (err) {
+            console.error(err);
+            document.getElementById('productList').innerHTML = '<div class="col-12 text-center text-danger">Gagal memuat produk. Pastikan server nyala.</div>';
+        }
+    }
+
+    // 2. Tambah ke Keranjang (dari Katalog)
+    window.addToCart = (id) => {
+        const product = products.find(p => p._id === id);
+        const item = cart.find(i => i.productId === id);
+        
+        if (item) {
+            item.qty++;
+        } else {
+            cart.push({ 
+                productId: id, 
+                name: product.name, 
+                price: product.price, 
+                qty: 1 
+            });
+        }
+        updateCartUI();
+    };
+
+    // 3. Ubah Jumlah (+ / -) di Modal Keranjang
+    window.changeQty = (productId, delta) => {
+        const item = cart.find(i => i.productId === productId);
+        if (!item) return;
+
+        item.qty += delta;
+
+        // Jika jumlah 0, tanya hapus
+        if (item.qty <= 0) {
+            if(confirm(`Hapus ${item.name} dari keranjang?`)) {
+                cart = cart.filter(i => i.productId !== productId);
+            } else {
+                item.qty = 1;
+            }
+        }
+        updateCartUI();
+    };
+
+    // 4. Update Tampilan Keranjang
+    function updateCartUI() {
+        const totalQty = cart.reduce((acc, item) => acc + item.qty, 0);
+        document.getElementById('cartCount').innerText = totalQty;
+
+        const totalPrice = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
+        document.getElementById('cartTotal').innerText = totalPrice.toLocaleString('id-ID');
+        
+        const tbody = document.getElementById('cartItems');
+        
+        if (cart.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-3">Keranjang kosong</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = cart.map(item => `
+            <tr>
+                <td>
+                    <div class="fw-bold">${item.name}</div>
+                    <small class="text-muted">@ Rp ${item.price.toLocaleString('id-ID')}</small>
+                </td>
+                <td class="text-center">
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button onclick="changeQty('${item.productId}', -1)" class="btn btn-outline-secondary fw-bold">-</button>
+                        <button class="btn btn-light disabled text-dark fw-bold px-3" style="opacity:1">${item.qty}</button>
+                        <button onclick="changeQty('${item.productId}', 1)" class="btn btn-outline-primary fw-bold">+</button>
+                    </div>
+                </td>
+                <td class="text-end fw-bold">
+                    Rp ${(item.price * item.qty).toLocaleString('id-ID')}
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    // 5. Proses Checkout
+    document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (cart.length === 0) return alert('Keranjang kosong!');
+
+        const data = {
+            customerName: document.getElementById('customerName').value,
+            whatsapp: document.getElementById('whatsapp').value,
+            address: document.getElementById('address').value,
+            items: cart,
+            totalPrice: cart.reduce((acc, item) => acc + (item.price * item.qty), 0)
+        };
+
+        try {
+            const res = await fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+
+            if (res.ok) {
+                // GANTI NOMOR WA DISINI
+                const adminPhone = "6281234567890"; 
+                
+                let itemsList = cart.map((i, idx) => `${idx+1}. ${i.name} (${i.qty} x ${i.price})`).join('%0A');
+                let message = `Halo Admin, saya mau pesan:%0A%0A` +
+                              `*DATA PEMESAN*%0A` +
+                              `Nama: ${data.customerName}%0A` +
+                              `Alamat: ${data.address}%0A%0A` +
+                              `*DETAIL PESANAN*%0A` +
+                              itemsList + 
+                              `%0A%0A*Total: Rp ${data.totalPrice.toLocaleString('id-ID')}*`;
+                
+                window.location.href = `https://wa.me/${adminPhone}?text=${message}`;
+            } else {
+                alert('Gagal membuat pesanan.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Gagal menghubungi server.');
+        }
+    });
+
+    // PWA Service Worker Registration
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(reg => console.log('SW Registered'))
+                .catch(err => console.log('SW Fail:', err));
+        });
+    }
+
+    // Jalankan
+    loadProducts();
+</script>
+</body>
+</html>
