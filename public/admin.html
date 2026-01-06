@@ -407,6 +407,39 @@
         if(confirm('Hapus produk?')) { await fetch(`/api/products/${id}`, { method: 'DELETE' }); loadProducts(); }
     }
 
+    // --- FITUR AUTO REFRESH (REALTIME) ---
+    // Mengecek pesanan baru setiap 5 detik (5000 ms)
+    setInterval(() => {
+        // Hanya refresh jika sedang di tab "Pesanan" agar tidak mengganggu saat edit produk
+        const activeTab = document.querySelector('.nav-link.active').getAttribute('href');
+        if (activeTab === '#pesanan') {
+            loadOrdersSilent(); 
+        }
+    }, 5000);
+
+    // Fungsi load orders tanpa mereset tampilan jika tidak ada perubahan
+    // (Agar dropdown tidak tertutup sendiri saat sedang dipilih)
+    let lastOrderCount = 0;
+    async function loadOrdersSilent() {
+        try {
+            const res = await fetch('/api/orders');
+            if(!res.ok) return;
+            const orders = await res.json();
+            
+            // Cek: Apakah jumlah pesanan berubah?
+            // Jika jumlahnya sama, JANGAN refresh tabel (biar admin tidak terganggu)
+            if (orders.length !== lastOrderCount) {
+                lastOrderCount = orders.length; // Update jumlah terakhir
+                loadOrders(); // Panggil fungsi asli untuk render tabel
+                
+                // (Opsional) Mainkan suara notifikasi jika pesanan bertambah
+                // playNotificationSound(); 
+            }
+        } catch (err) {
+            console.log('Auto-refresh skip (koneksi lambat)');
+        }
+    }
+
     checkAuth();
 </script>
 </body>
