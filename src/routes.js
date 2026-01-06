@@ -13,8 +13,14 @@ const router = express.Router();
 const uploadDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'public/uploads');
 
 // Buat folder jika belum ada
-if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
+// Tentukan folder penyimpanan: /tmp untuk Vercel, public/uploads untuk Laptop
+const uploadDir = process.env.VERCEL ? '/tmp' : 'public/uploads';
+
+// Logika Keamanan: Hanya buat folder jika KITA SEDANG DI LAPTOP (Bukan Vercel)
+if (!process.env.VERCEL) {
+    if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+    }
 }
 
 const storage = multer.diskStorage({
