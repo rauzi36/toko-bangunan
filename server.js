@@ -15,42 +15,52 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Middleware
 app.use(express.json());
-app.use(express.static('public')); // Serve file frontend static
+app.use(express.static('public')); 
 app.use(session({
     secret: 'rahasia_toko_bangunan',
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: false,
+    cookie: { maxAge: 24 * 60 * 60 * 1000 }
 }));
 
-// Database Connection
-mongoose.connect(process.env.MONGO_URI || 'mongodb+srv://admin:password123#@cluster0.ve4cwnd.mongodb.net/?appName=Cluster0')
-    .then(() => console.log('✅ MongoDB Connected'))
-    .catch(err => console.error(err));
-
-// Seed Admin (Buat admin default jika belum ada)
-const seedAdmin = async () => {
-    const exist = await Admin.findOne({ username: 'admin' });
-    if (!exist) {
-        const hashedPassword = await bcrypt.hash('admin123', 10);
-        await Admin.create({ username: 'admin', password: hashedPassword });
-        console.log('👤 Default Admin Created (User: admin, Pass: admin123)');
+// --- KONEKSI DATABASE (VERCEL OPTIMIZED) ---
+const connectDB = async () => {
+    if (mongoose.connections[0].readyState) return; // Jika sudah konek, pakai yg lama
+    
+    try {
+        await mongoose.connect(process.env.MONGO_URI);
+        console.log('✅ MongoDB Connected');
+        
+        // Seed Admin (Hanya dijalankan sekali saat koneksi berhasil)
+        const exist = await Admin.findOne({ username: 'admin' });
+        if (!exist) {
+            const hashedPassword = await bcrypt.hash('admin123', 10);
+            await Admin.create({ username: 'admin', password: hashedPassword });
+            console.log('👤 Default Admin Created');
+        }
+    } catch (error) {
+        console.error('❌ MongoDB Connection Error:', error);
+        throw error; // Lempar error agar Vercel tahu
     }
 };
-seedAdmin();
+
+// Panggil koneksi (Tapi jangan pakai await di top-level untuk Vercel, biarkan async)
+connectDB();
 
 // Routes
 app.use('/api', apiRoutes);
-
-// Halaman Utama
 app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public/index.html')));
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'public/admin.html')));
 
 const PORT = process.env.PORT || 3000;
 
-// GANTI BAGIAN app.listen DENGAN INI:
+// Cek apakah jalan di Vercel atau Local
 if (process.env.VERCEL) {
-    // Jika jalan di Vercel, jangan panggil listen(), tapi export app
+    // Di Vercel, kita export app
+    // Vercel akan menangani listening port
 } else {
-    // Jika jalan di Laptop (Local), panggil listen()
+    // Di Local, kita listen manual
     app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
-};
+}
+
+export default app;

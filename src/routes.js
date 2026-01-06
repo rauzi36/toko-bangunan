@@ -2,65 +2,67 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import multer from 'multer';
 import path from 'path';
+import fs from 'fs';
 import { Product, Order, Admin } from './models.js';
 
 const router = express.Router();
 
-// --- KONFIGURASI UPLOAD (MULTER) ---
+// Setup Upload Folder (Khusus Local, di Vercel folder ini ephemeral/sementara)
+const uploadDir = 'public/uploads';
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, 'public/uploads/'); // Simpan di folder public/uploads
-    },
-    filename: (req, file, cb) => {
-        // Nama file unik: timestamp + nama asli
-        cb(null, Date.now() + path.extname(file.originalname));
-    }
+    destination: (req, file, cb) => cb(null, uploadDir),
+    filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
 });
 const upload = multer({ storage: storage });
 
-// Middleware Cek Login Admin
+// Middleware Admin
 const isAdmin = (req, res, next) => {
+    // Cek session (Local) atau header khusus jika mau dikembangkan
     if (req.session.admin) next();
     else res.status(401).json({ error: 'Unauthorized' });
 };
 
-// Route Khusus Cek Status Login (Agar tidak merah di console)
-router.get('/check-auth', (req, res) => {
-    if (req.session.admin) {
-        res.json({ loggedIn: true });
-    } else {
-        res.json({ loggedIn: false });
-    }
-});
+// --- PUBLIC API ---
 
-// --- PUBLIC ROUTES (Pelanggan) ---
 router.get('/products', async (req, res) => {
     const products = await Product.find();
     res.json(products);
 });
 
+// 1. BUAT PESANAN (KURANGI STOK)
 router.post('/orders', async (req, res) => {
     try {
         const { customerName, whatsapp, address, items, totalPrice } = req.body;
-        const newOrder = await Order.create({
-            customerName, whatsapp, address, items, totalPrice
-        });
+        
+        // Simpan Pesanan
+        const newOrder = await Order.create({ customerName, whatsapp, address, items, totalPrice });
+
+        // LOGIKA BARU: Kurangi Stok Produk
+        for (const item of items) {
+            // $inc adalah fitur MongoDB untuk increment/decrement angka
+            // stock: -item.qty artinya kurangi stok sebanyak jumlah beli
+            await Product.findByIdAndUpdate(item.productId, { 
+                $inc: { stock: -item.qty } 
+            });
+        }
+
         res.json({ success: true, orderId: newOrder._id });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
+    } catch (err) { 
+        res.status(500).json({ error: err.message }); 
     }
 });
 
-// --- ADMIN ROUTES ---
+// --- ADMIN API ---
+
 router.post('/login', async (req, res) => {
     const { username, password } = req.body;
     const admin = await Admin.findOne({ username });
     if (admin && await bcrypt.compare(password, admin.password)) {
         req.session.admin = true;
         res.json({ success: true });
-    } else {
-        res.status(401).json({ success: false, message: 'Login gagal' });
-    }
+    } else { res.status(401).json({ success: false }); }
 });
 
 router.post('/logout', (req, res) => {
@@ -68,63 +70,31 @@ router.post('/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// --- MANAJEMEN PRODUK (Modified for Upload) ---
+router.get('/check-auth', (req, res) => {
+    res.json({ loggedIn: !!req.session.admin });
+});
 
-// Create Produk (Support Upload & URL)
+// CRUD Produk
 router.post('/products', isAdmin, upload.single('imageFile'), async (req, res) => {
-    try {
-        let imageUrl = req.body.imageURL; // Ambil dari input teks URL
-
-        // Jika ada file yang diupload, ganti imageUrl dengan path file
-        if (req.file) {
-            imageUrl = '/uploads/' + req.file.filename;
-        }
-
-        const product = await Product.create({
-            name: req.body.name,
-            price: req.body.price,
-            stock: req.body.stock,
-            image: imageUrl // Simpan path atau URL
-        });
-        res.json(product);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    let imageUrl = req.body.imageURL;
+    if (req.file) imageUrl = '/uploads/' + req.file.filename;
+    
+    await Product.create({
+        name: req.body.name,
+        price: req.body.price,
+        stock: req.body.stock,
+        image: imageUrl
+    });
+    res.json({ success: true });
 });
 
-// Update Produk
 router.put('/products/:id', isAdmin, upload.single('imageFile'), async (req, res) => {
-    try {
-        let updateData = {
-            name: req.body.name,
-            price: req.body.price,
-            stock: req.body.stock
-        };
+    let updateData = { name: req.body.name, price: req.body.price, stock: req.body.stock };
+    if (req.file) updateData.image = '/uploads/' + req.file.filename;
+    else if (req.body.imageURL) updateData.image = req.body.imageURL;
 
-        // Logika Gambar:
-        // 1. Jika ada file baru diupload -> Pakai file baru
-        // 2. Jika tidak ada file, tapi ada URL text -> Pakai URL text (bisa URL baru atau lama)
-        if (req.file) {
-            updateData.image = '/uploads/' + req.file.filename;
-        } else if (req.body.imageURL) {
-            updateData.image = req.body.imageURL;
-        }
-
-        await Product.findByIdAndUpdate(req.params.id, updateData);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
-});
-
-//Delete Order (Hapus Pesanan)
-router.delete('/orders/:id', isAdmin, async (req, res) => {
-    try {
-        await Order.findByIdAndDelete(req.params.id);
-        res.json({ success: true });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    await Product.findByIdAndUpdate(req.params.id, updateData);
+    res.json({ success: true });
 });
 
 router.delete('/products/:id', isAdmin, async (req, res) => {
@@ -132,16 +102,58 @@ router.delete('/products/:id', isAdmin, async (req, res) => {
     res.json({ success: true });
 });
 
-// Manajemen Pesanan
+// CRUD Order
 router.get('/orders', isAdmin, async (req, res) => {
     const orders = await Order.find().sort({ createdAt: -1 });
     res.json(orders);
 });
 
+// 2. UPDATE STATUS (BALIKIN STOK JIKA BATAL)
 router.put('/orders/:id', isAdmin, async (req, res) => {
-    const { status } = req.body;
-    await Order.findByIdAndUpdate(req.params.id, { status });
-    res.json({ success: true });
+    try {
+        const { status } = req.body;
+        const order = await Order.findById(req.params.id);
+
+        // Jika status sebelumnya BUKAN 'Dibatalkan', tapi sekarang diubah jadi 'Dibatalkan'
+        // Maka stok harus dikembalikan (Restock)
+        if (status === 'Dibatalkan' && order.status !== 'Dibatalkan') {
+            for (const item of order.items) {
+                await Product.findByIdAndUpdate(item.productId, { 
+                    $inc: { stock: item.qty } // Tambah stok balik
+                });
+            }
+        }
+        
+        // (Opsional) Jika status dari 'Dibatalkan' diubah lagi jadi 'Diproses', stok harus dikurangi lagi?
+        // Untuk saat ini kita buat searah saja (Batal = Restock).
+
+        await Order.findByIdAndUpdate(req.params.id, { status });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// 3. HAPUS PESANAN (BALIKIN STOK SEBELUM HAPUS)
+router.delete('/orders/:id', isAdmin, async (req, res) => {
+    try {
+        const order = await Order.findById(req.params.id);
+
+        // Jika pesanan dihapus, stok barang harus dikembalikan
+        // KECUALI jika statusnya memang sudah 'Dibatalkan' (karena stoknya sudah balik saat update status)
+        if (order && order.status !== 'Dibatalkan') {
+            for (const item of order.items) {
+                await Product.findByIdAndUpdate(item.productId, { 
+                    $inc: { stock: item.qty } // Tambah stok balik
+                });
+            }
+        }
+
+        await Order.findByIdAndDelete(req.params.id);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 export default router;
