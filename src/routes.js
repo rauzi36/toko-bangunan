@@ -7,13 +7,23 @@ import { Product, Order, Admin } from './models.js';
 
 const router = express.Router();
 
-// Setup Upload Folder (Khusus Local, di Vercel folder ini ephemeral/sementara)
-const uploadDir = 'public/uploads';
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+// --- KONFIGURASI UPLOAD (VERCEL FRIENDLY) ---
+// Jika di Vercel, gunakan folder /tmp (karena folder lain dikunci/read-only).
+// Jika di Laptop (Local), gunakan public/uploads agar gambar tersimpan.
+const uploadDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'public/uploads');
+
+// Buat folder jika belum ada
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir, { recursive: true });
+}
 
 const storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadDir),
-    filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        cb(null, Date.now() + path.extname(file.originalname));
+    }
 });
 const upload = multer({ storage: storage });
 
