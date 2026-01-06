@@ -15,7 +15,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // Middleware
 app.use(express.json());
-app.use(express.static('public')); 
+app.use(express.static(path.join(__dirname, 'public')));
 app.use(session({
     secret: 'rahasia_toko_bangunan',
     resave: false,
