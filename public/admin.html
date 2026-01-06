@@ -256,16 +256,39 @@
     }
 
     // Tambahkan fungsi deleteOrder baru di bawah loadOrders
-    async function deleteOrder(id) {
-        if(confirm('⚠️ Yakin ingin menghapus riwayat pesanan ini secara permanen?')) {
-            await fetch(`/api/orders/${id}`, { method: 'DELETE' });
-            loadOrders(); // Refresh tabel
+   async function deleteOrder(id) {
+    if(confirm('⚠️ Yakin ingin menghapus riwayat pesanan ini secara permanen?')) {
+        // 1. Hapus data di server
+        const res = await fetch(`/api/orders/${id}`, { method: 'DELETE' });
+        
+        // 2. Jika sukses, refresh tabel
+        if (res.ok) {
+            loadOrders(); // <--- Ini yang bikin otomatis hilang tanpa refresh
+        } else {
+            alert('Gagal menghapus pesanan');
         }
     }
+}
 
     async function updateStatus(id, status) {
-        await fetch(`/api/orders/${id}`, { method: 'PUT', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({status}) });
+    // 1. Kirim data ke server
+    const res = await fetch(`/api/orders/${id}`, { 
+        method: 'PUT', 
+        headers: {'Content-Type': 'application/json'}, 
+        body: JSON.stringify({status}) 
+    });
+
+    // 2. Cek apakah sukses
+    if (res.ok) {
+        // 3. INI KUNCINYA: Panggil ulang data agar tabel otomatis refresh
+        await loadOrders(); 
+        
+        // (Opsional) Kasih notifikasi kecil biar keren
+        // alert('Status berhasil diubah!'); 
+    } else {
+        alert('Gagal update status');
     }
+}
 
     // 2. PRODUCTS (Responsive Grid)
     window.toggleImageInput = () => {
