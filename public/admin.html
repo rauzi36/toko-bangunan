@@ -417,6 +417,11 @@
         }
     }, 5000);
 
+    function playNotificationSound() {
+    const audio = new Audio('/notif.mp3');
+    audio.play().catch(e => console.log('Browser memblokir autoplay suara, admin harus klik halaman dulu.'));
+}
+
     // Fungsi load orders tanpa mereset tampilan jika tidak ada perubahan
     // (Agar dropdown tidak tertutup sendiri saat sedang dipilih)
     let lastOrderCount = 0;
@@ -433,12 +438,14 @@
                 loadOrders(); // Panggil fungsi asli untuk render tabel
                 
                 // (Opsional) Mainkan suara notifikasi jika pesanan bertambah
-                // playNotificationSound(); 
+                playNotificationSound(); 
             }
         } catch (err) {
             console.log('Auto-refresh skip (koneksi lambat)');
         }
     }
+
+
 
     checkAuth();
 </script>
