@@ -15,6 +15,10 @@
     <style>
         .product-card img { height: 200px; object-fit: cover; }
         .qty-control { min-width: 30px; text-align: center; font-weight: bold; }
+        /* Style tambahan untuk Search Bar */
+        .search-wrapper { position: relative; max-width: 500px; margin: 0 auto; }
+        .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #aaa; }
+        .search-input { padding-left: 40px; border-radius: 50px; }
     </style>
 </head>
 <body class="bg-light">
@@ -42,6 +46,16 @@
 </nav>
 
 <div class="container pb-5">
+    
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="search-wrapper">
+                <span class="search-icon">🔍</span>
+                <input type="text" id="searchInput" class="form-control form-control-lg search-input shadow-sm" placeholder="Cari semen, cat, paku...">
+            </div>
+        </div>
+    </div>
+
     <div id="productList" class="row g-4">
         <div class="col-12 text-center mt-5">
             <div class="spinner-border text-primary" role="status"></div>
@@ -114,34 +128,53 @@
             const res = await fetch('/api/products');
             products = await res.json();
             
-            const container = document.getElementById('productList');
-            if (products.length === 0) {
-                container.innerHTML = '<div class="col-12 text-center py-5"><h5>Belum ada produk tersedia.</h5></div>';
-                return;
-            }
+            // Tampilkan semua produk saat awal load
+            renderProducts(products);
 
-            container.innerHTML = products.map(p => `
-                <div class="col-md-3 col-6">
-                    <div class="card product-card h-100 shadow-sm border-0">
-                        <img src="${p.image || 'https://via.placeholder.com/200?text=No+Image'}" class="card-img-top" alt="${p.name}">
-                        <div class="card-body d-flex flex-column">
-                            <h5 class="card-title text-truncate">${p.name}</h5>
-                            <p class="card-text text-muted small flex-grow-1">${p.description || '-'}</p>
-                            <h6 class="text-primary fw-bold mb-3">Rp ${p.price.toLocaleString('id-ID')}</h6>
-                            <button onclick="addToCart('${p._id}')" class="btn btn-outline-primary w-100 mt-auto fw-bold">
-                                + Keranjang
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
         } catch (err) {
             console.error(err);
             document.getElementById('productList').innerHTML = '<div class="col-12 text-center text-danger">Gagal memuat produk. Pastikan server nyala.</div>';
         }
     }
 
-    // 2. Tambah ke Keranjang (dari Katalog)
+    // 2. Render Produk (Dipisah agar bisa dipakai Pencarian)
+    function renderProducts(dataProduk) {
+        const container = document.getElementById('productList');
+        
+        if (dataProduk.length === 0) {
+            container.innerHTML = '<div class="col-12 text-center py-5"><h5 class="text-muted">Produk tidak ditemukan.</h5></div>';
+            return;
+        }
+
+        container.innerHTML = dataProduk.map(p => `
+            <div class="col-md-3 col-6">
+                <div class="card product-card h-100 shadow-sm border-0">
+                    <img src="${p.image || 'https://via.placeholder.com/200?text=No+Image'}" class="card-img-top" alt="${p.name}" onerror="this.src='https://via.placeholder.com/200?text=Error'">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title text-truncate">${p.name}</h5>
+                        <p class="card-text text-muted small flex-grow-1">Stok: ${p.stock || '-'}</p>
+                        <h6 class="text-primary fw-bold mb-3">Rp ${p.price.toLocaleString('id-ID')}</h6>
+                        <button onclick="addToCart('${p._id}')" class="btn btn-outline-primary w-100 mt-auto fw-bold">
+                            + Keranjang
+                        </button>
+                    </div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    // 3. Logic Pencarian Real-time
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+        const keyword = e.target.value.toLowerCase();
+        
+        // Filter produk berdasarkan nama
+        const filteredProducts = products.filter(p => p.name.toLowerCase().includes(keyword));
+        
+        // Tampilkan hasil filter
+        renderProducts(filteredProducts);
+    });
+
+    // 4. Tambah ke Keranjang
     window.addToCart = (id) => {
         const product = products.find(p => p._id === id);
         const item = cart.find(i => i.productId === id);
@@ -159,14 +192,13 @@
         updateCartUI();
     };
 
-    // 3. Ubah Jumlah (+ / -) di Modal Keranjang
+    // 5. Ubah Jumlah di Modal
     window.changeQty = (productId, delta) => {
         const item = cart.find(i => i.productId === productId);
         if (!item) return;
 
         item.qty += delta;
 
-        // Jika jumlah 0, tanya hapus
         if (item.qty <= 0) {
             if(confirm(`Hapus ${item.name} dari keranjang?`)) {
                 cart = cart.filter(i => i.productId !== productId);
@@ -177,7 +209,7 @@
         updateCartUI();
     };
 
-    // 4. Update Tampilan Keranjang
+    // 6. Update UI Keranjang
     function updateCartUI() {
         const totalQty = cart.reduce((acc, item) => acc + item.qty, 0);
         document.getElementById('cartCount').innerText = totalQty;
@@ -212,7 +244,7 @@
         `).join('');
     }
 
-    // 5. Proses Checkout
+    // 7. Proses Checkout
     document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
         e.preventDefault();
         if (cart.length === 0) return alert('Keranjang kosong!');
@@ -233,7 +265,7 @@
             });
 
             if (res.ok) {
-                // GANTI NOMOR WA DISINI
+                // GANTI NOMOR WA ADMIN DISINI
                 const adminPhone = "6282214408946"; 
                 
                 let itemsList = cart.map((i, idx) => `${idx+1}. ${i.name} (${i.qty} x ${i.price})`).join('%0A');
@@ -255,7 +287,7 @@
         }
     });
 
-    // PWA Service Worker Registration
+    // PWA Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
             navigator.serviceWorker.register('/service-worker.js')
