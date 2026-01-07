@@ -215,19 +215,45 @@
         return p; // <--- WAJIB ADA agar edit tidak error
     }
 
-    document.getElementById('productForm').addEventListener('submit', async (e) => { 
+document.getElementById('productForm').addEventListener('submit', async (e) => { 
         e.preventDefault(); 
-        const id=document.getElementById('pId').value; 
-        const url=id?`/api/products/${id}`:'/api/products'; 
-        const method=id?'PUT':'POST'; 
-        const fd=new FormData(); 
-        fd.append('name',document.getElementById('pName').value); 
-        fd.append('price',document.getElementById('pPrice').value); 
-        fd.append('stock',document.getElementById('pStock').value); 
-        if(document.getElementById('optUpload').checked) fd.append('imageFile',document.getElementById('pImageFile').files[0]); 
-        else fd.append('imageURL',document.getElementById('pImageURL').value); 
+        const id = document.getElementById('pId').value; 
+        const url = id ? `/api/products/${id}` : '/api/products'; 
+        const method = id ? 'PUT' : 'POST'; 
+        const fd = new FormData(); 
         
-        if((await fetch(url,{method,body:fd})).ok){ loadProducts(); resetForm(); } 
+        fd.append('name', document.getElementById('pName').value); 
+        fd.append('price', document.getElementById('pPrice').value); 
+        fd.append('stock', document.getElementById('pStock').value); 
+        
+        if(document.getElementById('optUpload').checked) {
+            const fileInput = document.getElementById('pImageFile');
+            if(fileInput.files[0]) {
+                fd.append('imageFile', fileInput.files[0]); 
+            }
+        } else {
+            fd.append('imageURL', document.getElementById('pImageURL').value); 
+        }
+
+        // --- BAGIAN INI YANG DIPERBAIKI ---
+        try {
+            const res = await fetch(url, { method, body: fd });
+            
+            if (res.ok) { 
+                loadProducts(); 
+                resetForm(); 
+                alert('Produk berhasil disimpan!');
+            } else if (res.status === 401) {
+                // Jika error 401 (Sesi Habis), tendang ke halaman login
+                alert('Sesi login telah berakhir karena server di-update. Silakan login kembali.');
+                showLogin();
+            } else {
+                alert('Gagal menyimpan produk. Cek koneksi atau ukuran gambar.');
+            }
+        } catch (err) {
+            console.error(err);
+            alert('Terjadi kesalahan koneksi.');
+        }
     });
 
     window.editProduct = (id) => { 
