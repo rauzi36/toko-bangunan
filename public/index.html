@@ -13,34 +13,40 @@
 
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .product-card img { height: 200px; object-fit: cover; }
+        .product-card img { height: 200px; object-fit: cover; cursor: pointer; }
+        .product-card .card-title { cursor: pointer; }
         .qty-control { min-width: 30px; text-align: center; font-weight: bold; }
-        /* Style tambahan untuk Search Bar */
         .search-wrapper { position: relative; max-width: 500px; margin: 0 auto; }
         .search-icon { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: #aaa; }
         .search-input { padding-left: 40px; border-radius: 50px; }
+        /* BARU: Sembunyikan badge offline secara default */
+        #offlineBadge { display: none; }
     </style>
 </head>
 <body class="bg-light">
 
 <nav class="navbar navbar-dark bg-primary mb-4 sticky-top shadow-sm">
     <div class="container">
-        <a href="/" class="navbar-brand mb-0 h1 text-decoration-none">
+        <a href="/" class="navbar-brand mb-0 h1 text-decoration-none d-flex align-items-center">
             🏗️ TB. Material Maju Jaya
+            <span id="offlineBadge" class="badge bg-warning text-dark ms-2 fs-6">Offline Mode</span>
         </a>
         
         <div class="d-flex gap-2 align-items-center">
-            
-            <a href="/admin" class="btn btn-outline-light btn-sm d-flex align-items-center" title="Login Admin">
-                🔐 <span class="d-none d-md-inline ms-1 fw-bold">Login</span>
-            </a>
+            <button class="btn btn-info fw-bold text-white d-flex align-items-center" data-bs-toggle="modal" data-bs-target="#trackModal" title="Lacak Pesanan">
+                📍 <span class="d-none d-md-inline ms-1">Lacak Resi</span>
+            </button>
 
             <button class="btn btn-warning position-relative fw-bold" data-bs-toggle="modal" data-bs-target="#cartModal">
-                🛒 <span class="d-none d-sm-inline">Keranjang</span>
+                🛒 <span class="d-none d-sm-inline"></span>
                 <span id="cartCount" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger">
                     0
                 </span>
             </button>
+            
+            <a href="/admin" class="btn btn-outline-light btn-sm d-flex align-items-center" title="Login Admin">
+                🔐 <span class="d-none d-md-inline ms-1 fw-bold">Login</span>
+            </a>
         </div>
     </div>
 </nav>
@@ -64,6 +70,54 @@
     </div>
 </div>
 
+<div class="modal fade" id="trackModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-info text-white">
+                <h5 class="modal-title">📍 Lacak Pesanan</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label text-muted small">Masukkan Nomor Resi / ID Pesanan</label>
+                    <div class="input-group">
+                        <input type="text" id="resiInput" class="form-control" placeholder="Contoh: MMJ-123456">
+                        <button class="btn btn-primary" onclick="trackOrder()">Cari</button>
+                    </div>
+                </div>
+                <div id="trackResult" class="mt-4 d-none">
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="productDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold" id="detailName">Nama Produk</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <img src="" id="detailImage" class="img-fluid rounded mb-3 shadow-sm w-100" style="max-height: 250px; object-fit: cover;" alt="Produk">
+                <h3 class="text-primary fw-bold mb-1" id="detailPrice">Rp 0</h3>
+                <span class="badge bg-secondary mb-3" id="detailStock" style="font-size: 0.9rem;">Stok: 0</span>
+                
+                <div class="text-start mt-3">
+                    <h6 class="fw-bold border-bottom pb-2">Deskripsi Produk:</h6>
+                    <p class="text-muted small" id="detailDescription" style="white-space: pre-wrap;">Deskripsi produk tidak tersedia.</p>
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="button" class="btn btn-success w-100 fw-bold py-2" id="btnAddToCartDetail">
+                    🛒 Masukkan Keranjang
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <div class="modal fade" id="cartModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -83,12 +137,11 @@
                             </tr>
                         </thead>
                         <tbody id="cartItems">
-                            </tbody>
+                        </tbody>
                     </table>
                 </div>
 
                 <h4 class="text-end fw-bold mb-4">Total: Rp <span id="cartTotal">0</span></h4>
-                
                 <hr>
                 
                 <h5 class="mb-3">📄 Data Pemesan (Bayar di Tempat / COD)</h5>
@@ -122,55 +175,109 @@
 
     // --- FUNGSI UTAMA ---
 
-    // 1. Load Produk dari Server
-    async function loadProducts() {
-        try {
-            const res = await fetch('/api/products');
-            products = await res.json();
-            
-            // Tampilkan semua produk saat awal load
+    // BARU: Fungsi khusus untuk menampilkan data offline
+    function tampilkanDataOffline() {
+        const cachedData = localStorage.getItem('cachedProducts');
+        
+        if (cachedData && cachedData !== "[]") {
+            products = JSON.parse(cachedData);
+            document.getElementById('offlineBadge').style.display = 'inline-block';
             renderProducts(products);
-
-        } catch (err) {
-            console.error(err);
-            document.getElementById('productList').innerHTML = '<div class="col-12 text-center text-danger">Gagal memuat produk. Pastikan server nyala.</div>';
+            console.log("Memuat produk dari localStorage (Offline Mode)");
+        } else {
+            document.getElementById('productList').innerHTML = `
+                <div class="col-12 text-center text-danger py-5">
+                    <h5>⚠️ Anda sedang offline</h5>
+                    <p>Tidak ada data produk yang tersimpan di HP/Browser Anda. Nyalakan internet lalu muat ulang.</p>
+                    <button class="btn btn-outline-danger mt-3 fw-bold" onclick="location.reload()">🔄 Muat Ulang</button>
+                </div>`;
         }
     }
 
-    // 2. Render Produk (Dipisah agar bisa dipakai Pencarian)
+    // 1. Load Produk dari Server (Versi Kebal Offline)
+    async function loadProducts() {
+        // Cek langsung dari awal: Jika terdeteksi offline, langsung pakai data memori
+        if (!navigator.onLine) {
+            return tampilkanDataOffline();
+        }
+
+        try {
+            // Pasang timer: Jika 5 detik server tidak balas, batalkan paksa!
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000);
+
+            const res = await fetch('/api/products', { signal: controller.signal });
+            clearTimeout(timeoutId);
+
+            if (!res.ok) throw new Error('Respon server gagal');
+            
+            products = await res.json();
+            
+            // Simpan ke memori browser (Update localStorage)
+            localStorage.setItem('cachedProducts', JSON.stringify(products));
+            document.getElementById('offlineBadge').style.display = 'none';
+            
+            renderProducts(products);
+
+        } catch (err) {
+            console.warn('Gagal koneksi ke server, beralih ke cache:', err);
+            // Jika gagal fetch, panggil fungsi offline
+            tampilkanDataOffline();
+        }
+    }
+
+    // 2. Render Produk
     function renderProducts(dataProduk) {
         const container = document.getElementById('productList');
-        
         if (dataProduk.length === 0) {
             container.innerHTML = '<div class="col-12 text-center py-5"><h5 class="text-muted">Produk tidak ditemukan.</h5></div>';
             return;
         }
-
         container.innerHTML = dataProduk.map(p => `
             <div class="col-md-3 col-6">
                 <div class="card product-card h-100 shadow-sm border-0">
-                    <img src="${p.image || 'https://via.placeholder.com/200?text=No+Image'}" class="card-img-top" alt="${p.name}" onerror="this.src='https://via.placeholder.com/200?text=Error'">
+                    <img src="${p.image || 'https://via.placeholder.com/200?text=No+Image'}" class="card-img-top" alt="${p.name}" onclick="showProductDetail('${p._id}')" onerror="this.src='https://via.placeholder.com/200?text=Error'">
                     <div class="card-body d-flex flex-column">
-                        <h5 class="card-title text-truncate">${p.name}</h5>
-                        <p class="card-text text-muted small flex-grow-1">Stok: ${p.stock || '-'}</p>
+                        <h5 class="card-title text-truncate" onclick="showProductDetail('${p._id}')">${p.name}</h5>
+                        <p class="card-text text-muted small flex-grow-1 mb-1">Stok: ${p.stock || '-'}</p>
                         <h6 class="text-primary fw-bold mb-3">Rp ${p.price.toLocaleString('id-ID')}</h6>
-                        <button onclick="addToCart('${p._id}')" class="btn btn-outline-primary w-100 mt-auto fw-bold">
-                            + Keranjang
-                        </button>
+                        <div class="d-flex gap-1 mt-auto">
+                            <button onclick="showProductDetail('${p._id}')" class="btn btn-outline-secondary w-50 btn-sm fw-bold">Detail</button>
+                            <button onclick="addToCart('${p._id}')" class="btn btn-primary w-50 btn-sm fw-bold">+ Beli</button>
+                        </div>
                     </div>
                 </div>
             </div>
         `).join('');
     }
 
+    // Fungsi Menampilkan Detail Produk
+    window.showProductDetail = (id) => {
+        const p = products.find(x => x._id === id);
+        if (!p) return;
+
+        document.getElementById('detailName').innerText = p.name;
+        document.getElementById('detailImage').src = p.image || 'https://via.placeholder.com/400?text=No+Image';
+        document.getElementById('detailPrice').innerText = 'Rp ' + p.price.toLocaleString('id-ID');
+        document.getElementById('detailStock').innerText = 'Stok: ' + (p.stock || '0');
+        
+        document.getElementById('detailDescription').innerText = p.description || 'Tidak ada deskripsi detail untuk produk ini.';
+
+        const btnAdd = document.getElementById('btnAddToCartDetail');
+        btnAdd.onclick = () => {
+            addToCart(p._id);
+            const detailModal = bootstrap.Modal.getInstance(document.getElementById('productDetailModal'));
+            detailModal.hide();
+            new bootstrap.Modal(document.getElementById('cartModal')).show();
+        };
+
+        new bootstrap.Modal(document.getElementById('productDetailModal')).show();
+    };
+
     // 3. Logic Pencarian Real-time
     document.getElementById('searchInput').addEventListener('input', (e) => {
         const keyword = e.target.value.toLowerCase();
-        
-        // Filter produk berdasarkan nama
         const filteredProducts = products.filter(p => p.name.toLowerCase().includes(keyword));
-        
-        // Tampilkan hasil filter
         renderProducts(filteredProducts);
     });
 
@@ -178,17 +285,8 @@
     window.addToCart = (id) => {
         const product = products.find(p => p._id === id);
         const item = cart.find(i => i.productId === id);
-        
-        if (item) {
-            item.qty++;
-        } else {
-            cart.push({ 
-                productId: id, 
-                name: product.name, 
-                price: product.price, 
-                qty: 1 
-            });
-        }
+        if (item) item.qty++;
+        else cart.push({ productId: id, name: product.name, price: product.price, qty: 1 });
         updateCartUI();
     };
 
@@ -196,9 +294,7 @@
     window.changeQty = (productId, delta) => {
         const item = cart.find(i => i.productId === productId);
         if (!item) return;
-
         item.qty += delta;
-
         if (item.qty <= 0) {
             if(confirm(`Hapus ${item.name} dari keranjang?`)) {
                 cart = cart.filter(i => i.productId !== productId);
@@ -213,12 +309,10 @@
     function updateCartUI() {
         const totalQty = cart.reduce((acc, item) => acc + item.qty, 0);
         document.getElementById('cartCount').innerText = totalQty;
-
         const totalPrice = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
         document.getElementById('cartTotal').innerText = totalPrice.toLocaleString('id-ID');
         
         const tbody = document.getElementById('cartItems');
-        
         if (cart.length === 0) {
             tbody.innerHTML = `<tr><td colspan="3" class="text-center text-muted py-3">Keranjang kosong</td></tr>`;
             return;
@@ -237,16 +331,20 @@
                         <button onclick="changeQty('${item.productId}', 1)" class="btn btn-outline-primary fw-bold">+</button>
                     </div>
                 </td>
-                <td class="text-end fw-bold">
-                    Rp ${(item.price * item.qty).toLocaleString('id-ID')}
-                </td>
+                <td class="text-end fw-bold">Rp ${(item.price * item.qty).toLocaleString('id-ID')}</td>
             </tr>
         `).join('');
     }
 
-    // 7. Proses Checkout
+   // 7. Proses Checkout
     document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
         e.preventDefault();
+        
+        // Pengecekan offline saat checkout
+        if (!navigator.onLine) {
+            return alert("⚠️ Anda sedang offline. Silakan nyalakan internet untuk membuat pesanan.");
+        }
+
         if (cart.length === 0) return alert('Keranjang kosong!');
 
         const data = {
@@ -265,11 +363,14 @@
             });
 
             if (res.ok) {
-                // GANTI NOMOR WA ADMIN DISINI
+                const responseData = await res.json(); 
+                const resiPesanan = responseData.resi; 
+
                 const adminPhone = "6282214408946"; 
                 
-                let itemsList = cart.map((i, idx) => `${idx+1}. ${i.name} (${i.qty} x ${i.price})`).join('%0A');
+                let itemsList = cart.map((i, idx) => `${idx+1}. ${i.name} (${i.qty} x Rp ${i.price.toLocaleString('id-ID')})`).join('%0A');
                 let message = `Halo Admin, saya mau pesan:%0A%0A` +
+                              `*📍 NO. RESI:* ${resiPesanan}%0A%0A` +
                               `*DATA PEMESAN*%0A` +
                               `Nama: ${data.customerName}%0A` +
                               `Alamat: ${data.address}%0A%0A` +
@@ -277,15 +378,84 @@
                               itemsList + 
                               `%0A%0A*Total: Rp ${data.totalPrice.toLocaleString('id-ID')}*`;
                 
+                cart = [];
+                updateCartUI();
+
                 window.location.href = `https://wa.me/${adminPhone}?text=${message}`;
             } else {
                 alert('Gagal membuat pesanan.');
             }
         } catch (err) {
             console.error(err);
-            alert('Gagal menghubungi server.');
+            alert('Gagal menghubungi server. Pastikan internet Anda menyala.');
         }
     });
+    
+    // 8. Logic Lacak Pesanan (Tracking)
+    async function trackOrder() {
+        if (!navigator.onLine) {
+            return alert("⚠️ Anda sedang offline. Silakan nyalakan internet untuk melacak pesanan.");
+        }
+
+        const resi = document.getElementById('resiInput').value.trim();
+        const resultDiv = document.getElementById('trackResult');
+
+        if (!resi) {
+            alert('Silakan masukkan nomor resi terlebih dahulu!');
+            return;
+        }
+
+        resultDiv.classList.remove('d-none');
+        resultDiv.innerHTML = `
+            <div class="text-center py-3">
+                <div class="spinner-border text-info" role="status"></div>
+                <p class="mt-2 text-muted">Mencari pesanan...</p>
+            </div>
+        `;
+
+        try {
+            const res = await fetch(`/api/track/${resi}`);
+            
+            if (res.ok) {
+                const data = await res.json();
+                
+                let statusColor = "bg-secondary";
+                if (data.status === "Diproses") statusColor = "bg-warning text-dark";
+                if (data.status === "Dikirim") statusColor = "bg-primary";
+                if (data.status === "Dalam Pengiriman") statusColor = "bg-primary";
+                if (data.status === "Selesai") statusColor = "bg-success";
+                if (data.status === "Dibatalkan") statusColor = "bg-danger";
+
+                resultDiv.innerHTML = `
+                    <div class="alert alert-success border-success">
+                        <h6 class="alert-heading fw-bold mb-3">Pesanan Ditemukan! 🎉</h6>
+                        <ul class="list-group list-group-flush rounded border">
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                Status
+                                <span class="badge ${statusColor} rounded-pill fs-6">${data.status || 'Menunggu Konfirmasi'}</span>
+                            </li>
+                            <li class="list-group-item"><strong>Pemesan:</strong> ${data.customerName || '-'}</li>
+                            <li class="list-group-item"><strong>Alamat:</strong> ${data.address || '-'}</li>
+                            <li class="list-group-item"><strong>Total Belanja:</strong> Rp ${data.totalPrice ? data.totalPrice.toLocaleString('id-ID') : '0'}</li>
+                        </ul>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <div class="alert alert-danger">
+                        ❌ Nomor resi <b>${resi}</b> tidak ditemukan. Pastikan nomor yang dimasukkan sudah benar.
+                    </div>
+                `;
+            }
+        } catch (err) {
+            console.error(err);
+            resultDiv.innerHTML = `
+                <div class="alert alert-warning">
+                    ⚠️ Gagal terhubung ke server. Pastikan internet stabil atau coba lagi nanti.
+                </div>
+            `;
+        }
+    }
 
     // PWA Service Worker
     if ('serviceWorker' in navigator) {
@@ -295,6 +465,16 @@
                 .catch(err => console.log('SW Fail:', err));
         });
     }
+
+    // BARU: Event listener untuk memuat ulang otomatis saat internet kembali menyala
+    window.addEventListener('online', () => {
+        document.getElementById('offlineBadge').style.display = 'none';
+        loadProducts(); 
+    });
+    
+    window.addEventListener('offline', () => {
+        tampilkanDataOffline();
+    });
 
     // Jalankan
     loadProducts();

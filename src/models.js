@@ -11,6 +11,9 @@ const productSchema = new mongoose.Schema({
 
 // Skema Pesanan
 const orderSchema = new mongoose.Schema({
+    // --- BARU: Tambahan field resi untuk fitur tracking ---
+    resi: { type: String, required: true, unique: true }, 
+    
     customerName: String,
     whatsapp: String,
     address: String,
@@ -21,7 +24,7 @@ const orderSchema = new mongoose.Schema({
         qty: Number
     }],
     totalPrice: Number,
-status: { 
+    status: { 
         type: String, 
         enum: ['Menunggu Konfirmasi', 'Diproses', 'Dalam Pengiriman', 'Selesai', 'Dibatalkan'],
         default: 'Menunggu Konfirmasi'

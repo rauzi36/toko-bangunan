@@ -41,13 +41,18 @@ router.get('/products', async (req, res) => {
     res.json(products);
 });
 
-// 1. BUAT PESANAN (KURANGI STOK)
+// 1. BUAT PESANAN (KURANGI STOK & GENERATE RESI)
 router.post('/orders', async (req, res) => {
     try {
         const { customerName, whatsapp, address, items, totalPrice } = req.body;
         
-        // Simpan Pesanan
-        const newOrder = await Order.create({ customerName, whatsapp, address, items, totalPrice });
+        // --- BARU: Generate Resi Acak ---
+        // Contoh hasil: MMJ-8374921
+        const randomNum = Math.floor(1000000 + Math.random() * 9000000);
+        const resi = `MMJ-${randomNum}`;
+
+        // Simpan Pesanan (Tambahkan resi ke dalam database)
+        const newOrder = await Order.create({ resi, customerName, whatsapp, address, items, totalPrice });
 
         // LOGIKA BARU: Kurangi Stok Produk
         for (const item of items) {
@@ -58,9 +63,37 @@ router.post('/orders', async (req, res) => {
             });
         }
 
-        res.json({ success: true, orderId: newOrder._id });
+        // Kembalikan orderId dan resi ke frontend
+        res.json({ success: true, orderId: newOrder._id, resi: newOrder.resi });
     } catch (err) { 
         res.status(500).json({ error: err.message }); 
+    }
+});
+
+// --- BARU: 2. API UNTUK LACAK PESANAN ---
+router.get('/track/:resi', async (req, res) => {
+    try {
+        // Ambil parameter resi, jadikan huruf besar (antisipasi user ngetik huruf kecil)
+        const nomorResi = req.params.resi.toUpperCase();
+        
+        // Cari pesanan berdasarkan resi
+        const order = await Order.findOne({ resi: nomorResi });
+
+        if (!order) {
+            return res.status(404).json({ message: 'Nomor resi tidak ditemukan' });
+        }
+
+        // Kirim data pesanan yang boleh dilihat pelanggan
+        res.json({
+            resi: order.resi,
+            status: order.status,
+            customerName: order.customerName,
+            address: order.address,
+            totalPrice: order.totalPrice,
+            tanggal: order.createdAt
+        });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 });
 
@@ -98,12 +131,39 @@ router.post('/products', isAdmin, upload.single('imageFile'), async (req, res) =
     res.json({ success: true });
 });
 
+// CRUD Produk
+router.post('/products', isAdmin, upload.single('imageFile'), async (req, res) => {
+    let imageUrl = req.body.imageURL;
+    if (req.file) imageUrl = '/uploads/' + req.file.filename;
+    
+    await Product.create({
+        name: req.body.name,
+        price: req.body.price,
+        stock: req.body.stock,
+        description: req.body.description, // --- BARU: Tambah deskripsi ---
+        image: imageUrl
+    });
+    res.json({ success: true });
+});
+
 router.put('/products/:id', isAdmin, upload.single('imageFile'), async (req, res) => {
-    let updateData = { name: req.body.name, price: req.body.price, stock: req.body.stock };
+    // --- BARU: Tambah deskripsi ke dalam data update ---
+    let updateData = { 
+        name: req.body.name, 
+        price: req.body.price, 
+        stock: req.body.stock,
+        description: req.body.description 
+    };
+    
     if (req.file) updateData.image = '/uploads/' + req.file.filename;
     else if (req.body.imageURL) updateData.image = req.body.imageURL;
 
     await Product.findByIdAndUpdate(req.params.id, updateData);
+    res.json({ success: true });
+});
+
+router.delete('/products/:id', isAdmin, async (req, res) => {
+    await Product.findByIdAndDelete(req.params.id);
     res.json({ success: true });
 });
 
@@ -134,9 +194,6 @@ router.put('/orders/:id', isAdmin, async (req, res) => {
             }
         }
         
-        // (Opsional) Jika status dari 'Dibatalkan' diubah lagi jadi 'Diproses', stok harus dikurangi lagi?
-        // Untuk saat ini kita buat searah saja (Batal = Restock).
-
         await Order.findByIdAndUpdate(req.params.id, { status });
         res.json({ success: true });
     } catch (err) {
